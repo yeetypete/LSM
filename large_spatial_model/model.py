@@ -8,6 +8,14 @@ from large_spatial_model.dust3r_with_feature import Dust3RWithFeature
 from large_spatial_model.gaussian_head import GaussianHead
 from large_spatial_model.lseg import LSegFeatureExtractor
 from large_spatial_model.utils.points_process import merge_points
+import argparse
+import pytorch_lightning.callbacks.model_checkpoint
+
+
+torch.serialization.add_safe_globals(
+    [argparse.Namespace, pytorch_lightning.callbacks.model_checkpoint.ModelCheckpoint]
+)
+
 
 class LSM_Dust3R(nn.Module):
     def __init__(self, config: LSMConfig):
