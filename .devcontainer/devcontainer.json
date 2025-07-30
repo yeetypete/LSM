@@ -41,6 +41,7 @@
     }
   ],
   "name": "lsm",
+  "postCreateCommand": "cd submodules/dust3r/croco/models/curope && python setup.py build_ext --inplace",
   "remoteUser": "vscode",
   "runArgs": [
     "--ipc=host",
