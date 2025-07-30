@@ -1,0 +1,52 @@
+{
+  "bed": {
+    "context": [
+      2,
+      21
+    ],
+    "target": [
+      4,
+      10
+    ]
+  },
+  "bench": {
+    "context": [
+      1,
+      16
+    ],
+    "target": [
+      2,
+      5
+    ]
+  },
+  "lawn": {
+    "context": [
+      10,
+      30
+    ],
+    "target": [
+      13,
+      29
+    ]
+  },
+  "room": {
+    "context": [
+      9,
+      29
+    ],
+    "target": [
+      19,
+      25
+    ]
+  },
+  "sofa": {
+    "context": [
+      9,
+      18
+    ],
+    "target": [
+      10,
+      15
+    ]
+  }
+}
