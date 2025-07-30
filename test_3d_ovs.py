@@ -147,18 +147,18 @@ def eval_model_3d_ovs(
                     )
 
                     ssim = compute_ssim(
-                        pred_rgb.unsqueeze(0),
                         target_image.unsqueeze(0),
+                        pred_rgb.unsqueeze(0),
                     ).item()
 
                     psnr = compute_psnr(
-                        pred_rgb.unsqueeze(0),
                         target_image.unsqueeze(0),
+                        pred_rgb.unsqueeze(0),
                     ).item()
 
                     lpips = compute_lpips(
-                        pred_rgb.unsqueeze(0),
                         target_image.unsqueeze(0),
+                        pred_rgb.unsqueeze(0),
                     ).item()
 
                     print(
