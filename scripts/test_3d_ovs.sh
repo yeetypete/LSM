@@ -1,7 +1,7 @@
 #!/bin/bash
 
 python test_3d_ovs.py \
-    --data_path "datasets/3d_ovs_mask/test" \
+    --data_path "data/3d_ovs_mask/test" \
     --eval_index "assets/evaluation_index_3d_ovs.json" \
     --model_path "checkpoints/pretrained_models/checkpoint-final.pth" \
     --output_path "outputs/3d_ovs/"
