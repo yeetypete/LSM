@@ -41,7 +41,18 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --index-url=https://download.pytorch.org/whl/cu128 \
     torch \
     torchvision && \
-    pip install -r requirements.txt
+    pip install -r requirements.txt && \
+    pip install flash-attn --no-build-isolation && \
+    pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
+
+# Copy submodules and install all components
+RUN --mount=type=bind,source=.,target=/workspace \
+    cp -r /workspace/submodules /tmp/ && \
+    export TORCH_CUDA_ARCH_LIST=$TORCH_CUDA_ARCH_LIST && \
+    pip install /tmp/submodules/PointTransformerV3/Pointcept/libs/pointops && \
+    pip install /tmp/submodules/3d_gaussian_splatting/diff-gaussian-rasterization && \
+    pip install /tmp/submodules/3d_gaussian_splatting/simple-knn && \
+    rm -rf /tmp/submodules
 
 # create cache directory
 RUN mkdir -p /home/$USERNAME/.cache && chown -R $USERNAME:$USERNAME /home/$USERNAME/.cache
