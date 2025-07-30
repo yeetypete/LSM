@@ -1,5 +1,5 @@
-import sys
 import os
+from typing import Any
 import numpy as np
 import scipy.interpolate
 import PIL
@@ -443,3 +443,102 @@ def render_video_from_file(file_list, model, output_path, device='cuda', resolut
     os.makedirs(moved_output_path, exist_ok=True)
     tensors_to_videos(moved_rendered_images, moved_all_depth_vis, moved_all_fmap_vis, moved_all_sems_vis, 
                      moved_output_path, fps=fps)
+
+
+@torch.no_grad()
+def render_pose(
+    context_images: list[torch.Tensor],
+    target_intrinsics: torch.Tensor,
+    target_extrinsics: torch.Tensor,
+    model: Any,
+    device: str = "cuda",
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Render a single image from a given pose using the model.
+
+
+    Args:
+        context_images (list[torch.Tensor]): List of context images, each of shape (C, H, W).
+        target_intrinsics (torch.Tensor): Target camera intrinsics of shape (3, 3).
+        target_extrinsics (torch.Tensor): Target camera pose of shape (4, 4).
+        model: The model used for rendering.
+        device (str): Device to perform computations on ('cuda' or 'cpu').
+
+    Returns:
+        tuple: Rendered image and semantic segmentation map.
+    """
+    # Convert context images to the format expected by the model
+    if not target_extrinsics.shape == (4, 4):
+        raise ValueError(
+            f"Expected target_extrinsics shape (4, 4), got {target_extrinsics.shape}"
+        )
+
+    for img_tensor in context_images:
+        if not img_tensor.dim() == 3:
+            raise ValueError(
+                f"Expected input tensor with 3 dimensions, got {img_tensor.dim()}"
+            )
+
+    images = []
+    for i, img_tensor in enumerate(context_images):
+        # Assume images are already normalized and in the correct format
+        # Convert from (C, H, W) to (1, C, H, W) and create the expected dict format
+        img_dict = {
+            "img": img_tensor.unsqueeze(0).to(device),
+            "true_shape": torch.tensor(
+                [[img_tensor.shape[1], img_tensor.shape[2]]],
+                dtype=torch.int32,
+                device=device,
+            ),  # [[H, W]] format as tensor
+            "idx": i,
+            "instance": str(i),
+        }
+        images.append(img_dict)
+
+    # Get image shape from first context image
+    image_shape = images[0]["true_shape"][0]
+
+    # Get camera poses and intrinsics from context images using dust3r
+    pairs = make_pairs(images, prefilter=None, symmetrize=True)
+    output = inference(pairs, model.dust3r.dust3r, device, batch_size=1)
+    mode = GlobalAlignerMode.PairViewer
+    scene = global_aligner(output, device=device, mode=mode)
+    extrinsics = scene.get_im_poses()
+    intrinsics = scene.get_intrinsics()
+
+    # Generate Gaussians from model predictions
+    pred1, pred2 = model(*images)
+    pred = merge_and_split_predictions(pred1, pred2)
+    gaussians = GaussianModel.from_predictions(pred[0], sh_degree=3)
+
+    # Set up rendering pipeline
+    pipeline = DummyPipeline()
+    bg_color = torch.tensor([0.0, 0.0, 0.0]).to(device)
+
+    # Create camera from target pose
+    target_intrinsics = target_intrinsics.to(device)
+    target_extrinsics = target_extrinsics.to(device)
+
+    camera = get_scaled_camera(
+        extrinsics[0], target_extrinsics, target_intrinsics, 1.0, image_shape
+    )
+
+    # Render from target pose
+    rendered_output = render(camera, gaussians, pipeline, bg_color)
+    rendered_image = rendered_output["render"]
+
+    # Process feature map for semantic segmentation
+    feature_map = rendered_output["feature_map"]
+    feature_map = model.feature_expansion(feature_map[None, ...])
+
+    # Generate semantic map
+    logits = model.lseg_feature_extractor.decode_feature(feature_map, labelset=LABELS)
+    semantic_map = torch.argmax(logits, dim=1) + 1
+    semantic_mask = COLORS[semantic_map.cpu()]
+    semantic_mask = rearrange(semantic_mask, "b h w c -> b c h w")
+    semantic_output = semantic_mask.squeeze(0)
+
+    # Clamp rendered image to valid range
+    rendered_image = torch.clamp(rendered_image, 0, 1)
+
+    return rendered_image, semantic_output
