@@ -451,6 +451,7 @@ def render_pose(
     target_intrinsics: torch.Tensor,
     target_extrinsics: torch.Tensor,
     model: Any,
+    labelset: list[str] = LABELS,
     device: str = "cuda",
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
@@ -532,13 +533,10 @@ def render_pose(
     feature_map = model.feature_expansion(feature_map[None, ...])
 
     # Generate semantic map
-    logits = model.lseg_feature_extractor.decode_feature(feature_map, labelset=LABELS)
+    logits = model.lseg_feature_extractor.decode_feature(feature_map, labelset=labelset)
     semantic_map = torch.argmax(logits, dim=1) + 1
-    semantic_mask = COLORS[semantic_map.cpu()]
-    semantic_mask = rearrange(semantic_mask, "b h w c -> b c h w")
-    semantic_output = semantic_mask.squeeze(0)
 
     # Clamp rendered image to valid range
     rendered_image = torch.clamp(rendered_image, 0, 1)
 
-    return rendered_image, semantic_output
+    return rendered_image, semantic_map

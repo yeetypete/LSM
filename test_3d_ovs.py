@@ -1,5 +1,5 @@
 import argparse
-
+from typing import Any
 from large_spatial_model.utils.path_manager import init_all_submodules
 from pathlib import Path
 import torch
@@ -11,7 +11,7 @@ from large_spatial_model.utils.visualization_utils import render_pose  # noqa: E
 
 
 def eval_model_3d_ovs(
-    model, dataset_path: Path, eval_index: Path, output_path: Path
+    model: Any, dataset_path: Path, eval_index_path: Path, output_path: Path
 ) -> None:
     context_images: list[torch.Tensor] = []
     # dummy target pose
@@ -20,7 +20,9 @@ def eval_model_3d_ovs(
 
     target_extrinsics = torch.eye(4, dtype=torch.float32)
     target_intrinsics = torch.eye(3, dtype=torch.float32)
-    image_rgb, image_seg = render_pose(context_images, target_intrinsics, target_extrinsics, model)
+    image_rgb, image_seg = render_pose(
+        context_images, target_intrinsics, target_extrinsics, model
+    )
 
 
 if __name__ == "__main__":
@@ -59,6 +61,6 @@ if __name__ == "__main__":
     eval_model_3d_ovs(
         model,
         dataset_path=data_path,
-        eval_index=eval_index,
+        eval_index_path=eval_index,
         output_path=output_path,
     )
