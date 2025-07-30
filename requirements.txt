@@ -27,3 +27,4 @@ lpips
 gdown
 scikit-learn
 open3d
+git+https://github.com/openai/CLIP.git
