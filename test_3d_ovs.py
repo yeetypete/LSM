@@ -13,10 +13,12 @@ from torchvision import transforms as tf
 from tqdm import tqdm
 
 from large_spatial_model.utils.path_manager import init_all_submodules
+from metrics_3d_ovs import compute_lpips, compute_psnr, compute_ssim
 
 init_all_submodules()
 
 from large_spatial_model.model import LSM_Dust3R  # noqa: E402
+from large_spatial_model.utils.visualization_utils import render_pose  # noqa: E402
 
 
 class Metadata(TypedDict):
@@ -42,7 +44,7 @@ def load_chunk(chunk_path: Path, data_index: Dict[str, str]) -> List[Example]:
     return chunk
 
 
-def load_index(index_path: Path) -> Dict[str, str]:
+def load_index(index_path: Path) -> Dict[str, Any]:
     """Load the index.json file."""
     with open(index_path, "r") as f:
         index = json.load(f)
@@ -112,26 +114,59 @@ def eval_model_3d_ovs(
     with tqdm(desc="Evaluating examples") as pbar:
         for chunk_path in sorted(chunk_paths):
             chunk: list[Example] = load_chunk(chunk_path, data_index)
-            # Filter chunk by eval index
-
             for example in chunk:
+                if example["key"] not in eval_index:
+                    continue
+                context_indices = eval_index[example["key"]]["context"]
+                assert len(context_indices) == 2, (
+                    "LSM requires exactly two context images."
+                )
+                target_indices = eval_index[example["key"]]["target"]
+
+                prompts = example["prompts"]
                 images = convert_images(example["images"])
-                masks = convert_masks(example["masks"])
                 gt_masks = convert_gt_masks(example["gt_masks"])
                 extrinsics, intrinsics = convert_poses(example["cameras"])
-                pbar.update(1)
 
-        #     # Run inference
-        #         try:
-        #             image_rgb, image_seg = render_pose(
-        #                 context_images, target_intrinsics, target_extrinsics, model
-        #             )
+                for target_index in target_indices:
+                    context_images = [
+                        images[context_indices][0],
+                        images[context_indices][1],
+                    ]
+                    target_image = images[target_index].cuda()
+                    target_extrinsics = extrinsics[target_index]
+                    target_intrinsics = intrinsics[target_index]
 
-        #         # Save results or compute metrics here
-        #         # TODO: Implement result saving/metric computation
+                    # Run inference
+                    pred_rgb, pred_segmentation = render_pose(
+                        context_images,
+                        target_intrinsics,
+                        target_extrinsics,
+                        model,
+                        labelset=prompts,
+                    )
 
-        #     except Exception as e:
-        #         print(f"Error processing example {example['key']}: {e}")
+                    ssim = compute_ssim(
+                        pred_rgb.unsqueeze(0),
+                        target_image.unsqueeze(0),
+                    ).item()
+
+                    psnr = compute_psnr(
+                        pred_rgb.unsqueeze(0),
+                        target_image.unsqueeze(0),
+                    ).item()
+
+                    lpips = compute_lpips(
+                        pred_rgb.unsqueeze(0),
+                        target_image.unsqueeze(0),
+                    ).item()
+
+                    print(
+                        f"Evaluating {example['key']} - "
+                        f"SSIM: {ssim:.4f}, PSNR: {psnr:.4f}, LPIPS: {lpips:.4f}"
+                    )
+
+                    pbar.update(1)
 
 
 if __name__ == "__main__":

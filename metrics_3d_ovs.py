@@ -2,12 +2,11 @@ import warnings
 from functools import cache
 
 import torch
-from einops import rearrange, reduce
-from jaxtyping import Bool, Float, UInt
+from einops import reduce
+from jaxtyping import Bool, Float
 from lpips import LPIPS
 from skimage.metrics import structural_similarity
 from torch import Tensor
-from torch.nn import functional as F
 
 
 @torch.no_grad()
@@ -53,25 +52,6 @@ def compute_ssim(
         for gt, hat in zip(ground_truth, predicted)
     ]
     return torch.tensor(ssim, dtype=predicted.dtype, device=predicted.device)
-
-
-@torch.no_grad()
-def compute_cosine_similarity(
-    gt_mask: UInt[Tensor, "batch 1 height width"],
-    gt_features: Float[Tensor, "batch n_feat d_feat"],
-    predicted: Float[Tensor, "batch channel height width"],
-) -> Float[Tensor, "..."]:
-    gt_mask = rearrange(gt_mask, "b 1 h w -> b h w")
-    predicted = rearrange(predicted, "b c h w -> b h w c")
-    b, h, w = gt_mask.nonzero(as_tuple=True)
-    feature_idx = (gt_mask[b, h, w] - 1).long()
-
-    gt_valid = gt_features[b, feature_idx, :]
-    predicted_valid = predicted[b, h, w]
-
-    similarity = F.cosine_similarity(gt_valid, predicted_valid)
-
-    return similarity
 
 
 @torch.no_grad()
