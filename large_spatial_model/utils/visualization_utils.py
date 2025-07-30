@@ -21,11 +21,77 @@ from ..loss import merge_and_split_predictions
 from .camera_utils import move_c2w_along_z
 
 from einops import rearrange
-LABELS = ['wall', 'floor', 'ceiling', 'chair', 'table', 'sofa', 'bed', 'other']
+LABELS = ['red bag', 'black leather shoe', 'banana', 'hand', 'camera', 'white sheet']
 NUM_LABELS = len(LABELS) + 1
 PALLETE = plt.cm.get_cmap('tab10', NUM_LABELS)
 COLORS_LIST = [PALLETE(i)[:3] for i in range(NUM_LABELS)]
 COLORS = torch.tensor(COLORS_LIST, dtype=torch.float32)
+
+def save_color_class_table(save_path='color_class_table.png', figsize=(10, 6)):
+    """
+    Save a table showing the mapping between colors and their corresponding classes.
+    
+    Args:
+        save_path (str): Path where to save the image
+        figsize (tuple): Figure size in inches (width, height)
+    """
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.axis('off')  # Hide axes
+    
+    # Prepare data for the table
+    class_names = ['background'] + LABELS
+    colors_rgb = COLORS_LIST
+    
+    # Create table data
+    table_data = []
+    color_patches = []
+    
+    for i, (class_name, color) in enumerate(zip(class_names, colors_rgb)):
+        table_data.append([f'Class {i}', class_name])
+        color_patches.append(color)
+    
+    # Create the table
+    table = ax.table(cellText=table_data,
+                    colLabels=['Index', 'Class Name'],
+                    cellLoc='left',
+                    loc='center',
+                    colWidths=[0.2, 0.6])
+    
+    # Style the table
+    table.auto_set_font_size(False)
+    table.set_fontsize(12)
+    table.scale(1, 2)  # Make rows taller
+    
+    # Color the first column with corresponding colors
+    for i in range(len(class_names)):
+        # Color the class index cell with the corresponding color
+        cell = table[(i+1, 0)]  # +1 because row 0 is header
+        cell.set_facecolor(color_patches[i])
+        cell.set_text_props(weight='bold', color='white' if sum(color_patches[i]) < 1.5 else 'black')
+        
+        # Style the class name cell
+        cell = table[(i+1, 1)]
+        cell.set_facecolor('lightgray')
+    
+    # Style header
+    for j in range(2):
+        cell = table[(0, j)]
+        cell.set_facecolor('darkblue')
+        cell.set_text_props(weight='bold', color='white')
+    
+    # Add title
+    plt.title('Color-Class Mapping for Semantic Segmentation', 
+             fontsize=16, fontweight='bold', pad=20)
+    
+    # Save the figure
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight', 
+                facecolor='white', edgecolor='none')
+    plt.close()
+    
+    print(f"Color-class table saved to: {save_path}")
+    return save_path
 
 def load_images(folder_or_list, size, square_ok=False, verbose=True, save_dir=None):
     """ open and convert all images in a list or folder to proper input format for DUSt3R
@@ -231,6 +297,7 @@ def tensors_to_videos(all_images, all_depth_vis, all_fmap_vis, all_sems_vis, vid
     all_fmap_vis = (all_fmap_vis.permute(0, 2, 3, 1).cpu().numpy() * 255).astype(np.uint8)
     all_sems_vis = (all_sems_vis.permute(0, 2, 3, 1).cpu().numpy() * 255).astype(np.uint8)
 
+    save_color_class_table(os.path.join(video_dir, 'color_class_table.png'))
     save_video(all_images, os.path.join(video_dir, 'output_images_video.mp4'), fps=fps)
     save_video(all_depth_vis, os.path.join(video_dir, 'output_depth_video.mp4'), fps=fps)
     save_video(all_fmap_vis, os.path.join(video_dir, 'output_fmap_video.mp4'), fps=fps)
