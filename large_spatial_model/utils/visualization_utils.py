@@ -21,7 +21,7 @@ from ..loss import merge_and_split_predictions
 from .camera_utils import move_c2w_along_z
 
 from einops import rearrange
-LABELS = ['red bag', 'black leather shoe', 'banana', 'hand', 'camera', 'white sheet']
+LABELS = ['wall', 'floor', 'ceiling', 'chair', 'table', 'sofa', 'bed', 'other']
 NUM_LABELS = len(LABELS) + 1
 PALLETE = plt.cm.get_cmap('tab10', NUM_LABELS)
 COLORS_LIST = [PALLETE(i)[:3] for i in range(NUM_LABELS)]
