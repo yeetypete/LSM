@@ -1,26 +1,31 @@
 import os
 from typing import Any
-import numpy as np
-import scipy.interpolate
-import PIL
-import torch
-import matplotlib.pyplot as plt
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-import cv2
 
-from dust3r.utils.image import heif_support_enabled, exif_transpose, _resize_pil_image, ImgNorm
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import PIL
+import scipy.interpolate
+import torch
+from dust3r.cloud_opt import GlobalAlignerMode, global_aligner
 from dust3r.image_pairs import make_pairs
 from dust3r.inference import inference
-from dust3r.cloud_opt import global_aligner, GlobalAlignerMode
-
-from .cuda_splatting import render, DummyPipeline
-from .gaussian_model import GaussianModel
-from .camera_utils import get_scaled_camera
-from ..loss import merge_and_split_predictions
-from .camera_utils import move_c2w_along_z
-
+from dust3r.utils.image import (
+    ImgNorm,
+    _resize_pil_image,
+    exif_transpose,
+    heif_support_enabled,
+)
 from einops import rearrange
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from torch import Tensor
+
+from ..loss import merge_and_split_predictions
+from .camera_utils import get_scaled_camera, move_c2w_along_z
+from .cuda_splatting import DummyPipeline, render
+from .gaussian_model import GaussianModel
+
 LABELS = ['wall', 'floor', 'ceiling', 'chair', 'table', 'sofa', 'bed', 'other']
 NUM_LABELS = len(LABELS) + 1
 PALLETE = plt.cm.get_cmap('tab10', NUM_LABELS)
@@ -447,21 +452,21 @@ def render_video_from_file(file_list, model, output_path, device='cuda', resolut
 
 @torch.no_grad()
 def render_pose(
-    context_images: list[torch.Tensor],
-    target_intrinsics: torch.Tensor,
-    target_extrinsics: torch.Tensor,
+    context_images: list[Tensor],
+    target_intrinsics: Tensor,
+    target_extrinsics: Tensor,
     model: Any,
     labelset: list[str] = LABELS,
     device: str = "cuda",
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[Tensor, Tensor]:
     """
     Render a single image from a given pose using the model.
 
 
     Args:
-        context_images (list[torch.Tensor]): List of context images, each of shape (C, H, W).
-        target_intrinsics (torch.Tensor): Target camera intrinsics of shape (3, 3).
-        target_extrinsics (torch.Tensor): Target camera pose of shape (4, 4).
+        context_images (list[Tensor]): List of context images, each of shape (C, H, W).
+        target_intrinsics (Tensor): Target camera intrinsics of shape (3, 3).
+        target_extrinsics (Tensor): Target camera pose of shape (4, 4).
         model: The model used for rendering.
         device (str): Device to perform computations on ('cuda' or 'cpu').
 
