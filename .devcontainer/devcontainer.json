@@ -1,0 +1,49 @@
+{
+  "build": {
+    "context": "..",
+    "dockerfile": "../Dockerfile",
+    "options": [
+      "--ssh=default"
+    ]
+  },
+  "containerEnv": {
+    "SHELL": "/bin/bash"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "charliermarsh.ruff",
+        "ms-azuretools.vscode-docker",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "redhat.vscode-yaml"
+      ]
+    }
+  },
+  "hostRequirements": {
+    "gpu": true
+  },
+  "mounts": [
+    {
+      "source": "lsm-cache",
+      "target": "/home/vscode/.cache",
+      "type": "volume"
+    },
+    {
+      "source": "${localEnv:HOME}/.netrc",
+      "target": "/home/vscode/.netrc",
+      "type": "bind"
+    },
+    {
+      "source": "${localEnv:HOME}/datasets",
+      "target": "${localEnv:HOME}/datasets",
+      "type": "bind"
+    }
+  ],
+  "name": "lsm",
+  "remoteUser": "vscode",
+  "runArgs": [
+    "--ipc=host",
+    "--gpus=all"
+  ]
+}
