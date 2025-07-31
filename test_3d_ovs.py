@@ -258,6 +258,32 @@ def eval_model_3d_ovs(
     with open(output_path / "scores_all.json", "w") as f:
         json.dump(eval_dict, f, indent=4)
 
+    # summarize scores in scores_all_avg.json
+    all_ssims = []
+    all_psnrs = []
+    all_lpips = []
+    all_ious = defaultdict(list)
+
+    for example_key, results in eval_dict.items():
+        for result in results:
+            all_ssims.append(result["ssim"])
+            all_psnrs.append(result["psnr"])
+            all_lpips.append(result["lpips"])
+            for prompt, iou in result["ious"].items():
+                all_ious[prompt].append(iou)
+
+    # Compute averages
+    all_iou_values = [iou for ious in all_ious.values() for iou in ious]
+    avg_scores = {
+        "ssim": np.mean(all_ssims),
+        "psnr": np.mean(all_psnrs),
+        "lpips": np.mean(all_lpips),
+        "mean_iou": np.mean(all_iou_values) if all_iou_values else 0.0,
+    }
+
+    with open(output_path / "scores_all_avg.json", "w") as f:
+        json.dump(avg_scores, f, indent=4)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
