@@ -491,6 +491,7 @@ def render_pose(
 
     Args:
         context_images (list[Tensor]): List of context images, each of shape (C, H, W).
+            Images should be in [0, 1] range
         context_extrinsics (Tensor): Extrinsics of context cameras of shape (N, 4, 4).
         target_intrinsics (Tensor): Target camera intrinsics of shape (3, 3).
         target_extrinsics (Tensor): Target camera pose in context coordinate system of shape (4, 4).
@@ -503,22 +504,21 @@ def render_pose(
     """
     # Convert context images to the format expected by the model
     if not target_extrinsics.shape == (4, 4):
-        raise ValueError(
-            f"Expected target_extrinsics shape (4, 4), got {target_extrinsics.shape}"
-        )
+        raise ValueError(f"Expected target_extrinsics shape (4, 4), got {target_extrinsics.shape}")
 
     for img_tensor in context_images:
         if not img_tensor.dim() == 3:
-            raise ValueError(
-                f"Expected input tensor with 3 dimensions, got {img_tensor.dim()}"
-            )
+            raise ValueError(f"Expected input tensor with 3 dimensions, got {img_tensor.dim()}")
 
     images = []
     for i, img_tensor in enumerate(context_images):
-        # Assume images are already normalized and in the correct format
+        # Apply the same normalization as ImgNorm: (x - 0.5) / 0.5 = 2x - 1
+        # This transforms from [0, 1] to [-1, 1] range as expected by the model
+        img_normalized = (img_tensor - 0.5) / 0.5
+
         # Convert from (C, H, W) to (1, C, H, W) and create the expected dict format
         img_dict = {
-            "img": img_tensor.unsqueeze(0).to(device),
+            "img": img_normalized.unsqueeze(0).to(device),
             "true_shape": torch.tensor(
                 [[img_tensor.shape[1], img_tensor.shape[2]]],
                 dtype=torch.int32,
@@ -559,9 +559,7 @@ def render_pose(
         extrinsics,  # type: ignore
     )
 
-    camera = get_scaled_camera(
-        extrinsics[0], target_extrinsic_dust3r, intrinsics[0], 1.0, image_shape
-    )
+    camera = get_scaled_camera(extrinsics[0], target_extrinsic_dust3r, intrinsics[0], 1.0, image_shape)
 
     # Render from target pose
     rendered_output = render(camera, gaussians, pipeline, bg_color)
