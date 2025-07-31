@@ -188,17 +188,12 @@ def eval_model_3d_ovs(
                     ]
                     target_image = images[target_index].cuda()
                     target_extrinsics = extrinsics[target_index]
-                    target_intrinsics = intrinsics[target_index]
-
-                    context_intrinsics = intrinsics[context_indices]
                     context_extrinsics = extrinsics[context_indices]
 
                     # Run inference
                     pred_rgb, pred_segmentation = render_pose(
                         context_images,
-                        context_intrinsics,
                         context_extrinsics,
-                        target_intrinsics,
                         target_extrinsics,
                         model,
                         labelset=prompts,

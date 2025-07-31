@@ -450,24 +450,87 @@ def render_video_from_file(file_list, model, output_path, device='cuda', resolut
                      moved_output_path, fps=fps)
 
 
+def to_dust3r_frame_scaled(
+    target_extrinsic_ctx: torch.Tensor,
+    context_extrinsics: torch.Tensor,
+    dust3r_extrinsics: torch.Tensor,
+    pair: tuple[int, int] = (0, 1),
+) -> torch.Tensor:
+    """
+    Convert a pose expressed in the *context* world frame to the *dust3r* frame,
+    taking into account an arbitrary similarity (rotation + translation + scale).
+
+    Parameters
+    ----------
+    target_extrinsic_ctx : (4,4) torch.Tensor
+        Pose of the target camera in *context* coordinates (world_from_camera).
+    context_extrinsics, dust3r_extrinsics : (N,4,4) torch.Tensor
+        Matching calibration poses of the *same* cameras in the two frames.
+        At least two common cameras (N ≥ 2) are required to fix scale.
+    pair : tuple[int, int], optional
+        Indices of two cameras to use for the scale estimate (default: (0, 1)).
+        You can pass more pairs or average over many pairs for robustness.
+
+    Returns
+    -------
+    (4,4) torch.Tensor
+        `target_extrinsic_ctx` re-expressed in the dust3r world frame.
+    """
+    i, j = pair  # pick two cameras that appear in both sets
+
+    # --- 1.  Scale -----------------------------------------------------------
+    c_ctx = context_extrinsics[:, :3, 3]  # camera centres in context frame
+    c_dus = dust3r_extrinsics[:, :3, 3]  # …and in dust3r frame
+
+    baseline_ctx = torch.linalg.norm(c_ctx[j] - c_ctx[i])
+    baseline_dus = torch.linalg.norm(c_dus[j] - c_dus[i])
+    s = baseline_dus / baseline_ctx  # global scale factor
+
+    # --- 2.  Rotation (use camera i as anchor) -------------------------------
+    R_ctx_i = context_extrinsics[i, :3, :3]
+    R_dus_i = dust3r_extrinsics[i, :3, :3]
+    R_rel = R_dus_i @ R_ctx_i.T  # SO(3) rotation between worlds
+
+    # --- 3.  Translation -----------------------------------------------------
+    t_ctx_i = c_ctx[i]
+    t_dus_i = c_dus[i]
+    t_rel = t_dus_i - s * (R_rel @ t_ctx_i)
+
+    # --- 4.  Apply similarity to the target camera ---------------------------
+    R_t_ctx = target_extrinsic_ctx[:3, :3]
+    t_t_ctx = target_extrinsic_ctx[:3, 3]
+
+    R_t_dus = R_rel @ R_t_ctx  # stays a proper rotation
+    t_t_dus = s * (R_rel @ t_t_ctx) + t_rel  # translation gets scaled
+
+    T_t_dus = torch.eye(
+        4, dtype=target_extrinsic_ctx.dtype, device=target_extrinsic_ctx.device
+    )
+    T_t_dus[:3, :3] = R_t_dus
+    T_t_dus[:3, 3] = t_t_dus
+    return T_t_dus
+
+
 @torch.no_grad()
 def render_pose(
     context_images: list[Tensor],
-    target_intrinsics: Tensor,
+    context_extrinsics: Tensor,
     target_extrinsics: Tensor,
     model: Any,
     labelset: list[str] = LABELS,
     device: str = "cuda",
 ) -> tuple[Tensor, Tensor]:
     """
-    Render a single image from a given pose using the model.
-
+    Render a single image from a given pose using the model, properly transforming
+    coordinates from the context camera frame to the LSM predicted camera frame.
 
     Args:
         context_images (list[Tensor]): List of context images, each of shape (C, H, W).
+        context_extrinsics (Tensor): Extrinsics of context cameras of shape (N, 4, 4).
         target_intrinsics (Tensor): Target camera intrinsics of shape (3, 3).
-        target_extrinsics (Tensor): Target camera pose of shape (4, 4).
+        target_extrinsics (Tensor): Target camera pose in context coordinate system of shape (4, 4).
         model: The model used for rendering.
+        labelset (list[str]): List of semantic labels for segmentation.
         device (str): Device to perform computations on ('cuda' or 'cpu').
 
     Returns:
@@ -522,11 +585,17 @@ def render_pose(
     bg_color = torch.tensor([0.0, 0.0, 0.0]).to(device)
 
     # Create camera from target pose
-    target_intrinsics = target_intrinsics.to(device)
     target_extrinsics = target_extrinsics.to(device)
+    context_extrinsics = context_extrinsics.to(device)
+
+    target_extrinsic_dust3r = to_dust3r_frame_scaled(
+        target_extrinsics,
+        context_extrinsics,
+        extrinsics,  # type: ignore
+    )
 
     camera = get_scaled_camera(
-        extrinsics[0], target_extrinsics, target_intrinsics, 1.0, image_shape
+        extrinsics[0], target_extrinsic_dust3r, intrinsics[0], 1.0, image_shape
     )
 
     # Render from target pose
