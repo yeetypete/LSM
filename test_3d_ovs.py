@@ -1,5 +1,6 @@
 import argparse
 import json
+from collections import defaultdict
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, TypedDict, Union
@@ -15,7 +16,7 @@ from tqdm import tqdm
 
 from geometry_3d_ovs import rescale_and_crop
 from large_spatial_model.utils.path_manager import init_all_submodules
-from metrics_3d_ovs import compute_lpips, compute_psnr, compute_ssim
+from metrics_3d_ovs import compute_lpips, compute_per_prompt_iou, compute_psnr, compute_ssim
 
 init_all_submodules()
 
@@ -27,6 +28,7 @@ FloatImage = Union[
     Float[Tensor, "channel height width"],
     Float[Tensor, "batch channel height width"],
 ]
+
 
 class Metadata(TypedDict):
     url: str
@@ -150,6 +152,8 @@ def eval_model_3d_ovs(
     chunk_names = set(data_index.values())
     chunk_paths: list[Path] = sorted([dataset_path / f for f in chunk_names])
 
+    eval_dict = defaultdict(list)
+
     # Process each chunk
     with tqdm(desc="Evaluating examples") as pbar:
         for chunk_path in sorted(chunk_paths):
@@ -158,9 +162,7 @@ def eval_model_3d_ovs(
                 if example["key"] not in eval_index:
                     continue
                 context_indices = eval_index[example["key"]]["context"]
-                assert len(context_indices) == 2, (
-                    "LSM requires exactly two context images."
-                )
+                assert len(context_indices) == 2, "LSM requires exactly two context images."
                 target_indices = eval_index[example["key"]]["target"]
 
                 prompts = example["prompts"]
@@ -201,12 +203,11 @@ def eval_model_3d_ovs(
 
                     save_image(
                         pred_rgb,
-                        output_path / f"{example['key']}_pred_rgb_{target_index}.png",
+                        output_path / example["key"] / "pred_rgb" / f"{target_index}.png",
                     )
                     save_image(
-                        pred_segmentation,
-                        output_path
-                        / f"{example['key']}_pred_segmentation_{target_index}.png",
+                        target_image,
+                        output_path / example["key"] / "target_rgb" / f"{target_index}.png",
                     )
 
                     ssim = compute_ssim(
@@ -224,12 +225,38 @@ def eval_model_3d_ovs(
                         pred_rgb.unsqueeze(0),
                     ).item()
 
-                    print(
-                        f"Evaluating {example['key']} - "
-                        f"SSIM: {ssim:.4f}, PSNR: {psnr:.4f}, LPIPS: {lpips:.4f}"
+                    # compute IoU
+                    target_gt_masks = gt_masks[target_index].unsqueeze(0).cuda()
+                    n_classes = len(prompts)
+                    pred_one_hot = torch.zeros(
+                        1, n_classes, *pred_segmentation.shape[-2:], dtype=torch.bool, device=pred_segmentation.device
                     )
 
+                    for prompt_idx in range(n_classes):
+                        pred_one_hot[0, prompt_idx] = (pred_segmentation == (prompt_idx + 1)).squeeze()
+
+                    pred_masks = {}
+                    for prompt_idx, prompt in enumerate(prompts):
+                        pred_masks[prompt] = pred_one_hot[:, prompt_idx : prompt_idx + 1]  # (1, 1, H, W)
+
+                    ious = compute_per_prompt_iou(prompts, target_gt_masks.bool(), pred_masks)
+
+                    ious = {prompt: iou.item() if torch.is_tensor(iou) else iou for prompt, iou in ious.items()}
+
+                    eval_dict[example["key"]].append(
+                        {
+                            "ssim": ssim,
+                            "psnr": psnr,
+                            "lpips": lpips,
+                            "ious": ious,
+                        }
+                    )
                     pbar.update(1)
+
+    # Save evaluation results
+    output_path.mkdir(exist_ok=True, parents=True)
+    with open(output_path / "scores_all.json", "w") as f:
+        json.dump(eval_dict, f, indent=4)
 
 
 if __name__ == "__main__":
